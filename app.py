@@ -1,223 +1,201 @@
-# Import necessary libraries
 import streamlit as st
+import math
+import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
-import json
-from datetime import datetime
-import plotly.express as px
-import os
+from io import BytesIO
+from fpdf import FPDF
 
-# --- Page Configuration ---
-# Set up the Streamlit page with a title, icon, and wide layout for better data display.
+# --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Income & Expense Tracker",
-    page_icon="💰",
-    layout="wide"
+    page_title="All-in-One Engineering App",
+    page_icon="🌟",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# --- Constants ---
-# Define file paths for data persistence and the currency symbol.
-DATA_FILE = 'data.json'
-CATEGORIES_FILE = 'categories.json'
-PKR_SYMBOL = "PKR"
+# --- EXPORT HELPERS ---
+def export_csv(data_dict, filename="results.csv"):
+    df = pd.DataFrame([data_dict])
+    return df.to_csv(index=False).encode("utf-8")
 
-# --- Data Handling Functions ---
+def export_pdf(data_dict, filename="results.pdf", title="Exported Results"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, txt=title, ln=True, align="C")
+    pdf.ln(10)
 
-def load_data():
-    """
-    Load transaction data from the JSON file.
-    If the file doesn't exist or is empty, return an empty DataFrame.
-    This function also ensures the 'Date' and 'Amount' columns have the correct data types.
-    """
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as f:
-            try:
-                data = json.load(f)
-                df = pd.DataFrame(data)
-            except json.JSONDecodeError:
-                # Handle case where the file is empty or malformed
-                return pd.DataFrame(columns=['Date', 'Type', 'Category', 'Description', 'Amount'])
-    else:
-        # Create an empty DataFrame if the file doesn't exist
-        return pd.DataFrame(columns=['Date', 'Type', 'Category', 'Description', 'Amount'])
+    pdf.set_font("Arial", "", 12)
+    for k, v in data_dict.items():
+        pdf.cell(200, 10, txt=f"{k}: {v}", ln=True)
+
+    buffer = BytesIO()
+    pdf.output(buffer)
+    buffer.seek(0)
+    return buffer
+
+# --- STANDARD CONVERTER ---
+def render_standard_converter():
+    st.header("🔢 Standard Converter")
+    value = st.number_input("Enter a value", value=1.0)
+    unit = st.selectbox("Choose conversion", ["Meters → Kilometers", "Kilograms → Grams"])
     
-    # Ensure data types are correct after loading
-    if not df.empty:
-        df['Date'] = pd.to_datetime(df['Date'])
-        df['Amount'] = pd.to_numeric(df['Amount'])
-    return df
+    if unit == "Meters → Kilometers":
+        result = value / 1000
+        st.success(f"{value} meters = {result} km")
+    elif unit == "Kilograms → Grams":
+        result = value * 1000
+        st.success(f"{value} kg = {result} g")
 
-def save_data(df):
-    """
-    Save the transaction DataFrame to the JSON file.
-    The date is converted to ISO format for JSON compatibility.
-    """
-    # Convert DataFrame to a list of dictionaries for JSON serialization
-    data = df.to_dict('records')
-    # Convert Timestamp objects to string before saving
-    for record in data:
-        record['Date'] = record['Date'].isoformat()
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+# --- TEMPERATURE CONVERTER ---
+def render_temperature_converter():
+    st.header("🌡️ Temperature Converter")
+    temp = st.number_input("Enter temperature", value=0.0)
+    unit = st.selectbox("Select conversion", ["Celsius → Fahrenheit", "Fahrenheit → Celsius"])
+    
+    if unit == "Celsius → Fahrenheit":
+        result = (temp * 9/5) + 32
+        st.success(f"{temp} °C = {result:.2f} °F")
+    elif unit == "Fahrenheit → Celsius":
+        result = (temp - 32) * 5/9
+        st.success(f"{temp} °F = {result:.2f} °C")
 
-def get_default_categories():
-    """Return the default set of income and expense categories."""
-    return {
-        "Income": ["Revenue", "Investment", "Grants"],
-        "Expense": ["Salaries", "Income Tax", "Sales Tax", "Inventory", "Bills", "Marketing", "Rent", "Trainings"]
+# --- BMI CALCULATOR ---
+def render_bmi_calculator():
+    st.header("⚕️ BMI Calculator")
+    weight = st.number_input("Weight (kg)", value=70.0)
+    height = st.number_input("Height (m)", value=1.75)
+    
+    if height > 0:
+        bmi = weight / (height ** 2)
+        st.success(f"Your BMI is {bmi:.2f}")
+
+# --- ADVANCED PER-UNIT CALCULATOR ---
+def render_enhanced_per_unit():
+    st.header("⚡ Advanced Per-Unit (PU) System Calculator")
+    st.info("Supports Resistance, Reactance, Susceptance per km with line length")
+
+    base_mva = st.number_input("Base MVA", value=100.0, min_value=0.1)
+    base_kv = st.number_input("Base kV (L-L)", value=13.8, min_value=0.1)
+    length = st.number_input("Line Length (km)", value=10.0, min_value=0.0)
+
+    Z_base = (base_kv ** 2) / base_mva
+    Y_base = 1 / Z_base
+
+    with st.expander("Input Parameters per km"):
+        R_per = st.number_input("Resistance per km (Ω/km)", value=0.1)
+        X_per = st.number_input("Reactance per km (Ω/km)", value=0.3)
+        B_per = st.number_input("Susceptance per km (S/km)", value=0.0002)
+
+    R_total, X_total, B_total = R_per*length, X_per*length, B_per*length
+    R_pu, X_pu, B_pu = R_total/Z_base, X_total/Z_base, B_total/Y_base
+
+    st.success(f"Per Unit Values → R = {R_pu:.6f} pu, X = {X_pu:.6f} pu, B = {B_pu:.6f} pu")
+
+    # --- EXPORT OPTIONS ---
+    results = {
+        "Base MVA": base_mva,
+        "Base kV": base_kv,
+        "Length (km)": length,
+        "R_total (Ω)": round(R_total, 6),
+        "X_total (Ω)": round(X_total, 6),
+        "B_total (S)": round(B_total, 6),
+        "R_pu": round(R_pu, 6),
+        "X_pu": round(X_pu, 6),
+        "B_pu": round(B_pu, 6)
     }
 
-def load_categories():
-    """
-    Load custom and default categories from the categories JSON file.
-    If the file doesn't exist, it creates it with default categories.
-    """
-    if os.path.exists(CATEGORIES_FILE):
-        with open(CATEGORIES_FILE, 'r') as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return get_default_categories()
-    else:
-        return get_default_categories()
+    csv_data = export_csv(results)
+    pdf_data = export_pdf(results, title="Advanced PU Results")
 
-def save_categories(categories):
-    """Save the current categories (including custom ones) to the JSON file."""
-    with open(CATEGORIES_FILE, 'w') as f:
-        json.dump(categories, f, indent=4)
+    st.download_button("⬇️ Download as CSV", csv_data, "pu_results.csv", "text/csv")
+    st.download_button("⬇️ Download as PDF", pdf_data, "pu_results.pdf", "application/pdf")
 
-# --- Main Application Logic ---
-def main():
-    """
-    The main function that runs the Streamlit application.
-    """
-    # --- Load Data and Categories at the start ---
-    df = load_data()
-    categories = load_categories()
+# --- ZIP LOAD MODEL ---
+def render_zip_load_model():
+    st.header("🏠 ZIP Load Model Calculator")
+    st.info("Models load as a combination of constant impedance (Z), current (I), and power (P)")
 
-    # --- Sidebar for User Inputs ---
-    st.sidebar.header("Add New Transaction")
-    
-    # Use a form to group inputs and submit them together.
-    with st.sidebar.form("transaction_form", clear_on_submit=True):
-        transaction_date = st.date_input("Date", datetime.now())
-        transaction_type = st.selectbox("Type", ["Income", "Expense"])
-        
-        # Display categories based on the selected transaction type.
-        available_categories = categories[transaction_type]
-        transaction_category = st.selectbox("Category", available_categories)
-        
-        description = st.text_area("Description")
-        amount = st.number_input(f"Amount ({PKR_SYMBOL})", min_value=0.01, format="%.2f")
-        
-        submitted = st.form_submit_button("Add Transaction")
-        
-        if submitted:
-            # Create a new DataFrame for the transaction
-            new_transaction = pd.DataFrame([{
-                "Date": pd.to_datetime(transaction_date),
-                "Type": transaction_type,
-                "Category": transaction_category,
-                "Description": description,
-                "Amount": amount
-            }])
-            
-            # Append the new transaction and save the updated data
-            df = pd.concat([df, new_transaction], ignore_index=True)
-            save_data(df)
-            st.sidebar.success("Transaction added successfully!")
+    P0 = st.number_input("Base Real Power P0 (MW)", value=100.0)
+    Q0 = st.number_input("Base Reactive Power Q0 (MVAr)", value=50.0)
+    V0 = st.number_input("Base Voltage (p.u.)", value=1.0)
 
-    # --- Sidebar for Managing Custom Categories ---
-    st.sidebar.header("Manage Categories")
-    with st.sidebar.form("category_form", clear_on_submit=True):
-        new_category_type = st.selectbox("Transaction type for new category", ["Income", "Expense"])
-        new_category_name = st.text_input("New Category Name")
-        add_category_submitted = st.form_submit_button("Add Category")
-        
-        if add_category_submitted and new_category_name:
-            if new_category_name not in categories[new_category_type]:
-                categories[new_category_type].append(new_category_name)
-                save_categories(categories)
-                st.sidebar.success(f"Category '{new_category_name}' added to {new_category_type}!")
-            else:
-                st.sidebar.warning("Category already exists.")
+    a = st.slider("a (Z proportion)", 0.0, 1.0, 0.5)
+    b = st.slider("b (I proportion)", 0.0, 1.0, 0.3)
+    c = 1 - a - b
+    d = st.slider("d (Reactive Z proportion)", 0.0, 1.0, 0.5)
+    e = st.slider("e (Reactive I proportion)", 0.0, 1.0, 0.3)
+    f = 1 - d - e
 
-    # --- Main Dashboard Display ---
-    st.title("Organizational Finance Dashboard")
-    st.markdown("---")
+    V = st.slider("Operating Voltage (p.u.)", 0.5, 1.5, 1.0, 0.01)
+    P = P0 * (a*(V/V0)**2 + b*(V/V0) + c)
+    Q = Q0 * (d*(V/V0)**2 + e*(V/V0) + f)
 
-    # --- Key Performance Indicators (KPIs) ---
-    total_income = df[df['Type'] == 'Income']['Amount'].sum()
-    total_expense = df[df['Type'] == 'Expense']['Amount'].sum()
-    net_profit = total_income - total_expense
+    st.success(f"At V={V:.2f} pu → P = {P:.2f} MW, Q = {Q:.2f} MVAr")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Income", f"{PKR_SYMBOL} {total_income:,.2f}")
-    col2.metric("Total Expenses", f"{PKR_SYMBOL} {total_expense:,.2f}")
-    col3.metric("Net Profit/Loss", f"{PKR_SYMBOL} {net_profit:,.2f}")
+    # --- Generate Curve ---
+    Vs = np.linspace(0.5, 1.5, 200)
+    Pcurve = P0 * (a*(Vs/V0)**2 + b*(Vs/V0) + c)
+    Qcurve = Q0 * (d*(Vs/V0)**2 + e*(Vs/V0) + f)
 
-    st.markdown("---")
+    fig, ax = plt.subplots()
+    ax.plot(Vs, Pcurve, label="P(V)", color="blue")
+    ax.plot(Vs, Qcurve, label="Q(V)", color="green")
+    ax.axvline(V, color='r', linestyle='--', label="Operating V")
+    ax.set_xlabel("Voltage (p.u.)")
+    ax.set_ylabel("Power (MW / MVAr)")
+    ax.legend()
+    st.pyplot(fig)
 
-    # --- Visualizations ---
-    if not df.empty:
-        col1, col2 = st.columns(2)
+    # --- EXPORT NUMERIC RESULTS ---
+    results = {
+        "P0 (MW)": P0, "Q0 (MVAr)": Q0,
+        "Operating V (p.u.)": V,
+        "P (MW)": round(P, 4),
+        "Q (MVAr)": round(Q, 4),
+        "Coeffs a,b,c": f"{a:.2f}, {b:.2f}, {c:.2f}",
+        "Coeffs d,e,f": f"{d:.2f}, {e:.2f}, {f:.2f}"
+    }
 
-        with col1:
-            st.subheader("Income & Expenses by Category")
-            category_summary = df.groupby(['Category', 'Type'])['Amount'].sum().reset_index()
-            fig_bar = px.bar(category_summary, 
-                             x="Category", 
-                             y="Amount", 
-                             color="Type",
-                             title="Income vs. Expenses Breakdown",
-                             labels={"Amount": f"Amount ({PKR_SYMBOL})"},
-                             color_discrete_map={"Income": "#2ca02c", "Expense": "#d62728"},
-                             barmode='group')
-            st.plotly_chart(fig_bar, use_container_width=True)
+    csv_data = export_csv(results)
+    pdf_data = export_pdf(results, title="ZIP Load Model Results")
 
-        with col2:
-            st.subheader("Monthly Financial Trend")
-            df_monthly = df.set_index('Date').groupby('Type').resample('M')['Amount'].sum().reset_index()
-            fig_line = px.line(df_monthly, 
-                               x="Date", 
-                               y="Amount", 
-                               color='Type', 
-                               title="Monthly Income vs. Expenses",
-                               labels={"Amount": f"Amount ({PKR_SYMBOL})", "Date": "Month"},
-                               color_discrete_map={"Income": "#2ca02c", "Expense": "#d62728"},
-                               markers=True)
-            st.plotly_chart(fig_line, use_container_width=True)
-    else:
-        st.info("Dashboard is empty. Add transactions using the sidebar to see your financial summary.")
+    st.download_button("⬇️ Download Results as CSV", csv_data, "zip_results.csv", "text/csv")
+    st.download_button("⬇️ Download Results as PDF", pdf_data, "zip_results.pdf", "application/pdf")
 
-    # --- Interactive Data Table with Editing and Deletion ---
-    st.subheader("All Transactions")
-    
-    if not df.empty:
-        # Use st.data_editor for an editable, Excel-like table.
-        # It allows adding, deleting, and editing rows directly.
-        column_config = {
-            "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
-            "Amount": st.column_config.NumberColumn("Amount", format=f"{PKR_SYMBOL} %'.2f"),
-            "Type": st.column_config.SelectboxColumn("Type", options=["Income", "Expense"], required=True),
-            "Category": st.column_config.SelectboxColumn("Category", options=categories["Income"] + categories["Expense"], required=True)
-        }
-        
-        edited_df = st.data_editor(
-            df.sort_values(by="Date", ascending=False), # Show newest first
-            num_rows="dynamic",
-            column_config=column_config,
-            use_container_width=True,
-            key="data_editor"
-        )
+    # --- EXPORT PLOT ---
+    buf_png = BytesIO()
+    fig.savefig(buf_png, format="png")
+    buf_png.seek(0)
 
-        # Detect changes made in the data editor and save them back to the file.
-        if not edited_df.equals(df):
-            edited_df['Date'] = pd.to_datetime(edited_df['Date'])
-            save_data(edited_df)
-            st.toast("Changes saved successfully!")
-            st.rerun() # Rerun the app to reflect changes in KPIs and charts.
-    else:
-        st.warning("No transactions recorded yet.")
+    buf_pdf = BytesIO()
+    fig.savefig(buf_pdf, format="pdf")
+    buf_pdf.seek(0)
 
-if __name__ == "__main__":
-    main()
+    st.download_button("🖼️ Download Plot as PNG", buf_png, "zip_curve.png", "image/png")
+    st.download_button("📑 Download Plot as PDF", buf_pdf, "zip_curve.pdf", "application/pdf")
+
+# --- MAIN APP NAVIGATION ---
+st.sidebar.title("Navigation")
+page = st.sidebar.radio(
+    "Go to",
+    [
+        "Standard Converter",
+        "Temperature Converter",
+        "BMI Calculator",
+        "Advanced Per-Unit Calculator",
+        "ZIP Load Model"
+    ]
+)
+
+if page == "Standard Converter":
+    render_standard_converter()
+elif page == "Temperature Converter":
+    render_temperature_converter()
+elif page == "BMI Calculator":
+    render_bmi_calculator()
+elif page == "Advanced Per-Unit Calculator":
+    render_enhanced_per_unit()
+elif page == "ZIP Load Model":
+    render_zip_load_model()
